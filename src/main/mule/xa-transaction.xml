@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:bti="http://www.mulesoft.org/schema/mule/ee/bti"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/bti http://www.mulesoft.org/schema/mule/ee/bti/current/mule-bti-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="cf146503-9e3f-4720-8244-a244a69ecd09" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="4dc0b9e5-afcc-422a-8a83-e1719add4fc8" >
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="Surya@1998" database="xa_transaction" useXaTransactions="true"/>
+	</db:config>
+	<bti:transaction-manager doc:name="Bitronix Transaction Manager" doc:id="de4ba244-c63a-4bff-94e9-f855d8159c02" />
+	<vm:config name="VM_Config" doc:name="VM Config" doc:id="f4edf926-efce-4711-8423-453eaa94d07a">
+		<vm:connection />
+		<vm:queues >
+			<vm:queue queueName="queue1" />
+		</vm:queues>
+	</vm:config>
+	<flow name="xa-transactionFlow" doc:id="ec31cab4-19bf-441e-a1fd-da5c2ea452f9" >
+		<http:listener doc:name="Listener" doc:id="8eba1d8d-cbd5-4f54-9c3e-07f3e59b4888" config-ref="HTTP_Listener_config" path="/xa-test"/>
+		<try doc:name="Try" doc:id="a0ac8537-4fdd-4cbc-b9c6-9c8b18d2bd4b" transactionalAction="ALWAYS_BEGIN" transactionType="XA">
+			<db:insert doc:id="6ff5bb33-358a-486f-bf1e-8de630ebcf2f" config-ref="Database_Config" transactionalAction="ALWAYS_JOIN">
+				<db:sql ><![CDATA[INSERT INTO transaction1 (id, name, age)
+VALUES (2, 'surya', '23')]]></db:sql>
+			</db:insert>
+			<logger level="INFO" doc:name="Logger" doc:id="2e225908-6fda-40c3-8f40-59f09458f1e1" message="#[output json --- payload]"/>
+			<ee:transform doc:name="Transform Message" doc:id="204ec316-51cd-40f7-8b24-f7d9f1134033" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<vm:publish queueName="queue1" doc:id="6c385446-f4db-4196-8511-8a4c99d8bf45" config-ref="VM_Config" transactionalAction="ALWAYS_JOIN">
+				<vm:content ><![CDATA[#[payloads]]]></vm:content>
+			</vm:publish>
+			<logger level="INFO" doc:name="Logger" doc:id="596f46a6-5f3c-4538-bbb4-030afa04a6ef" message="#[output json --- payload]"/>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b3fbb711-2458-46bc-b005-bd687ab3e952" >
+					<logger level="INFO" doc:name="Logger" doc:id="b6d78ca3-68b2-405f-a144-e5e8eac57d3d" message="Just Move a head"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<db:select doc:name="Select" doc:id="d5f04305-9172-4bbf-9e34-f4a4e96c78f9" config-ref="Database_Config" target="a1" targetValue="#[output json --- payload]">
+			<db:sql ><![CDATA[SELECT * FROM transaction1]]></db:sql>
+		</db:select>
+		<ee:transform doc:name="Transform Message" doc:id="f195a38d-88b9-41fc-81c9-47ef40d3f993" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"table1": vars.a1
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="xa-transactionFlow1" doc:id="d125879e-5f30-4ff3-b489-b3df9561b1f7" >
+		<vm:listener queueName="queue1" doc:name="Listener" doc:id="ece550ee-8436-425a-884e-8a8da267b7fc" config-ref="VM_Config"/>
+		<logger level="INFO" doc:name="Logger" doc:id="776df6eb-5fde-4aad-b5e0-ca37c4decc94" message="#[output json --- payload]"/>
+	</flow>
+</mule>
